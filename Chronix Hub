@@ -19,14 +19,11 @@ local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
-local MarketplaceService = game:GetService("MarketplaceService")
 
 local G = getgenv()
 if G.Chronix and type(G.Chronix.Unload) == "function" then pcall(G.Chronix.Unload) end
 local Chronix = {Running = true}
 G.Chronix = Chronix
-
-local WEBHOOK = "https://discord.com/api/webhooks/1538386095547613317/elAfHXHOqravVQ7R7tJG4-HFUr2AK2Kgt_cCEcuTAorFPlIr3K3uRG5o6oxCJbBidGcl"
 
 local function frame()
 	local ok = pcall(function() task.wait() end)
@@ -43,115 +40,6 @@ local function fetch(url)
 	local ok, res = pcall(function() return game:HttpGet(url) end)
 	if ok and type(res) == "string" and #res > 0 then return res end
 	return nil
-end
-
-local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or http_request or request
-local function hasRequest()
-	return type(httpRequest) == "function"
-end
-
-local function gameName()
-	local nm
-	pcall(function()
-		local info = MarketplaceService:GetProductInfo(game.PlaceId)
-		if info and info.Name then nm = info.Name end
-	end)
-	return nm or ("PlaceId " .. tostring(game.PlaceId))
-end
-
-local function userField()
-	local lp = Players.LocalPlayer
-	local nm = (lp and lp.Name) or "?"
-	local uid = (lp and lp.UserId) or 0
-	return nm .. " (" .. tostring(uid) .. ")"
-end
-
-local function postWebhook(embed)
-	if not hasRequest() then return false end
-	local body
-	local okE = pcall(function()
-		body = HttpService:JSONEncode({ username = "Chronix Hub", embeds = { embed } })
-	end)
-	if not okE then return false end
-	local ok, res = pcall(function()
-		return httpRequest({
-			Url = WEBHOOK,
-			Method = "POST",
-			Headers = { ["Content-Type"] = "application/json", ["User-Agent"] = "Chronix" },
-			Body = body,
-		})
-	end)
-	if not ok then return false end
-	if type(res) == "table" then
-		local code = res.StatusCode or res.status_code
-		if code and (code < 200 or code >= 300) then return false end
-	end
-	return true
-end
-
-local function requestedBefore(gid)
-	if G.ChronixRequested and G.ChronixRequested[gid] then return true end
-	local seen = false
-	pcall(function()
-		if isfile and isfile("chronix_requested.json") then
-			local d = HttpService:JSONDecode(readfile("chronix_requested.json"))
-			if type(d) == "table" then
-				for _, v in ipairs(d) do if v == gid then seen = true break end end
-			end
-		end
-	end)
-	return seen
-end
-
-local function markRequested(gid)
-	G.ChronixRequested = G.ChronixRequested or {}
-	G.ChronixRequested[gid] = true
-	pcall(function()
-		if not writefile then return end
-		local list = {}
-		if isfile and isfile("chronix_requested.json") then
-			local ok, d = pcall(function() return HttpService:JSONDecode(readfile("chronix_requested.json")) end)
-			if ok and type(d) == "table" then list = d end
-		end
-		local found = false
-		for _, v in ipairs(list) do if v == gid then found = true break end end
-		if not found then list[#list + 1] = gid end
-		writefile("chronix_requested.json", HttpService:JSONEncode(list))
-	end)
-end
-
-local function autoRequest()
-	local gid = game.GameId
-	if requestedBefore(gid) then return end
-	local ok = postWebhook({
-		title = "Hub used in unsupported game",
-		description = "A user ran Chronix Hub in a game with no script.",
-		color = 15844367,
-		fields = {
-			{ name = "Game", value = gameName(), inline = true },
-			{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
-			{ name = "GameId", value = tostring(gid), inline = true },
-			{ name = "User", value = userField(), inline = false },
-		},
-	})
-	if ok then markRequested(gid) end
-	return ok
-end
-
-local function manualRequest(note)
-	if note == nil or note == "" then note = "(no note)" end
-	if #note > 1000 then note = note:sub(1, 1000) end
-	return postWebhook({
-		title = "Game request",
-		description = note,
-		color = 9727231,
-		fields = {
-			{ name = "Game", value = gameName(), inline = true },
-			{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
-			{ name = "GameId", value = tostring(game.GameId), inline = true },
-			{ name = "User", value = userField(), inline = false },
-		},
-	})
 end
 
 local function protectParent(sg)
@@ -450,55 +338,7 @@ local function buildPanel(unsupported, entry)
 	end
 
 	mkLabel("REQUEST A GAME", 13, Color3.fromRGB(148, 108, 255), 18)
-	mkLabel("type a game name or link, then send", 11, Color3.fromRGB(130, 130, 150), 16)
-
-	local inputBox = Instance.new("TextBox")
-	inputBox.Size = UDim2.new(1, -4, 0, 40)
-	inputBox.BackgroundColor3 = Color3.fromRGB(31, 31, 42)
-	inputBox.BorderSizePixel = 0
-	inputBox.Font = Enum.Font.Gotham
-	inputBox.TextSize = 13
-	inputBox.TextColor3 = Color3.fromRGB(230, 228, 245)
-	inputBox.PlaceholderText = "game name / link (optional)"
-	inputBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
-	inputBox.Text = ""
-	inputBox.ClearTextOnFocus = false
-	inputBox.TextXAlignment = Enum.TextXAlignment.Left
-	inputBox.TextTruncate = Enum.TextTruncate.AtEnd
-	inputBox.LayoutOrder = nextOrder()
-	inputBox.Parent = body
-	local ibc = Instance.new("UICorner") ibc.CornerRadius = UDim.new(0, 8) ibc.Parent = inputBox
-	local ibp = Instance.new("UIPadding") ibp.PaddingLeft = UDim.new(0, 10) ibp.PaddingRight = UDim.new(0, 10) ibp.Parent = inputBox
-
-	local sendBtn = mkButton("Send Request", Color3.fromRGB(88, 60, 170))
-	local resultLbl = mkLabel("", 12, Color3.fromRGB(150, 200, 150), 30)
-
-	local sending = false
-	track(sendBtn.Activated:Connect(function()
-		if sending then return end
-		if not hasRequest() then
-			resultLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
-			resultLbl.Text = "your executor can't send http requests"
-			return
-		end
-		sending = true
-		sendBtn.Text = "sending..."
-		local note = inputBox.Text
-		task.spawn(function()
-			local ok = manualRequest(note)
-			if ok then
-				resultLbl.TextColor3 = Color3.fromRGB(150, 210, 150)
-				resultLbl.Text = "request sent - thanks!"
-				sendBtn.Text = "Sent"
-				inputBox.Text = ""
-			else
-				resultLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
-				resultLbl.Text = "send failed - try again"
-				sendBtn.Text = "Send Request"
-				sending = false
-			end
-		end)
-	end))
+	mkLabel("message 6z4b on discord with the game name to get a script added", 11, Color3.fromRGB(130, 130, 150), 32)
 
 	local footer = Instance.new("TextLabel")
 	footer.Size = UDim2.new(1, 0, 0, 22)
@@ -542,23 +382,7 @@ local function buildPanel(unsupported, entry)
 	pcall(protectParent, gui)
 
 	if unsupported then
-		if hasRequest() then
-			statusLbl.Text = "sending a request for this game..."
-			task.spawn(function()
-				local ok = autoRequest()
-				if not unloaded then
-					if ok then
-						statusLbl.Text = "a request has been put in for a script"
-					elseif requestedBefore(game.GameId) then
-						statusLbl.Text = "a request has been put in for a script"
-					else
-						statusLbl.Text = "couldn't auto-send - use the button below"
-					end
-				end
-			end)
-		else
-			statusLbl.Text = "this game isn't supported yet"
-		end
+		statusLbl.Text = "this game isn't supported yet"
 	else
 		statusLbl.Text = "network issue? tap retry, or request below"
 	end
