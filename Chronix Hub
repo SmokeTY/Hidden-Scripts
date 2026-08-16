@@ -19,11 +19,14 @@ local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local G = getgenv()
 if G.Chronix and type(G.Chronix.Unload) == "function" then pcall(G.Chronix.Unload) end
 local Chronix = {Running = true}
 G.Chronix = Chronix
+
+local WEBHOOK = "https://discord.com/api/webhooks/1538386095547613317/elAfHXHOqravVQ7R7tJG4-HFUr2AK2Kgt_cCEcuTAorFPlIr3K3uRG5o6oxCJbBidGcl"
 
 local function frame()
 	local ok = pcall(function() task.wait() end)
@@ -40,6 +43,115 @@ local function fetch(url)
 	local ok, res = pcall(function() return game:HttpGet(url) end)
 	if ok and type(res) == "string" and #res > 0 then return res end
 	return nil
+end
+
+local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or http_request or request
+local function hasRequest()
+	return type(httpRequest) == "function"
+end
+
+local function gameName()
+	local nm
+	pcall(function()
+		local info = MarketplaceService:GetProductInfo(game.PlaceId)
+		if info and info.Name then nm = info.Name end
+	end)
+	return nm or ("PlaceId " .. tostring(game.PlaceId))
+end
+
+local function userField()
+	local lp = Players.LocalPlayer
+	local nm = (lp and lp.Name) or "?"
+	local uid = (lp and lp.UserId) or 0
+	return nm .. " (" .. tostring(uid) .. ")"
+end
+
+local function postWebhook(embed)
+	if not hasRequest() then return false end
+	local body
+	local okE = pcall(function()
+		body = HttpService:JSONEncode({ username = "Chronix Hub", embeds = { embed } })
+	end)
+	if not okE then return false end
+	local ok, res = pcall(function()
+		return httpRequest({
+			Url = WEBHOOK,
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json", ["User-Agent"] = "Chronix" },
+			Body = body,
+		})
+	end)
+	if not ok then return false end
+	if type(res) == "table" then
+		local code = res.StatusCode or res.status_code
+		if code and (code < 200 or code >= 300) then return false end
+	end
+	return true
+end
+
+local function requestedBefore(gid)
+	if G.ChronixRequested and G.ChronixRequested[gid] then return true end
+	local seen = false
+	pcall(function()
+		if isfile and isfile("chronix_requested.json") then
+			local d = HttpService:JSONDecode(readfile("chronix_requested.json"))
+			if type(d) == "table" then
+				for _, v in ipairs(d) do if v == gid then seen = true break end end
+			end
+		end
+	end)
+	return seen
+end
+
+local function markRequested(gid)
+	G.ChronixRequested = G.ChronixRequested or {}
+	G.ChronixRequested[gid] = true
+	pcall(function()
+		if not writefile then return end
+		local list = {}
+		if isfile and isfile("chronix_requested.json") then
+			local ok, d = pcall(function() return HttpService:JSONDecode(readfile("chronix_requested.json")) end)
+			if ok and type(d) == "table" then list = d end
+		end
+		local found = false
+		for _, v in ipairs(list) do if v == gid then found = true break end end
+		if not found then list[#list + 1] = gid end
+		writefile("chronix_requested.json", HttpService:JSONEncode(list))
+	end)
+end
+
+local function autoRequest()
+	local gid = game.GameId
+	if requestedBefore(gid) then return end
+	local ok = postWebhook({
+		title = "Hub used in unsupported game",
+		description = "A user ran Chronix Hub in a game with no script.",
+		color = 15844367,
+		fields = {
+			{ name = "Game", value = gameName(), inline = true },
+			{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
+			{ name = "GameId", value = tostring(gid), inline = true },
+			{ name = "User", value = userField(), inline = false },
+		},
+	})
+	if ok then markRequested(gid) end
+	return ok
+end
+
+local function manualRequest(note)
+	if note == nil or note == "" then note = "(no note)" end
+	if #note > 1000 then note = note:sub(1, 1000) end
+	return postWebhook({
+		title = "Game request",
+		description = note,
+		color = 9727231,
+		fields = {
+			{ name = "Game", value = gameName(), inline = true },
+			{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
+			{ name = "GameId", value = tostring(game.GameId), inline = true },
+			{ name = "User", value = userField(), inline = false },
+		},
+	})
 end
 
 local function protectParent(sg)
@@ -181,7 +293,7 @@ local function run(entry)
 	return true
 end
 
-local function buildPicker(list, failed)
+local function buildPanel(unsupported, entry)
 	local conns = {}
 	local function track(c)
 		conns[#conns + 1] = c
@@ -208,8 +320,8 @@ local function buildPicker(list, failed)
 
 	local cam = workspace.CurrentCamera
 	local vp = (cam and cam.ViewportSize) or Vector2.new(800, 600)
-	local W = math.floor(math.min(340, vp.X - 24))
-	local H = math.floor(math.min(430, vp.Y - 60))
+	local W = math.floor(math.min(330, vp.X - 24))
+	local H = math.floor(math.min(360, vp.Y - 60))
 
 	local main = Instance.new("Frame")
 	main.Size = UDim2.fromOffset(W, H)
@@ -256,55 +368,71 @@ local function buildPicker(list, failed)
 	closeBtn.Text = "X"
 	closeBtn.Parent = titleBar
 
-	local status = Instance.new("TextLabel")
-	status.Size = UDim2.new(1, -28, 0, 18)
-	status.Position = UDim2.fromOffset(14, 40)
-	status.BackgroundTransparency = 1
-	status.Font = Enum.Font.Gotham
-	status.TextSize = 12
-	status.TextColor3 = Color3.fromRGB(150, 150, 170)
-	status.TextXAlignment = Enum.TextXAlignment.Left
-	status.TextTruncate = Enum.TextTruncate.AtEnd
-	status.Text = failed and "load failed - pick manually" or "no script for this game - pick one"
-	status.Parent = main
-
-	local listFrame = Instance.new("ScrollingFrame")
-	listFrame.Size = UDim2.new(1, -20, 1, -92)
-	listFrame.Position = UDim2.fromOffset(10, 64)
-	listFrame.BackgroundTransparency = 1
-	listFrame.BorderSizePixel = 0
-	listFrame.ScrollBarThickness = 4
-	listFrame.ScrollBarImageColor3 = Color3.fromRGB(148, 108, 255)
-	listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-	listFrame.Parent = main
+	local body = Instance.new("ScrollingFrame")
+	body.Size = UDim2.new(1, -20, 1, -76)
+	body.Position = UDim2.fromOffset(10, 46)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.ScrollBarThickness = 4
+	body.ScrollBarImageColor3 = Color3.fromRGB(148, 108, 255)
+	body.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	body.CanvasSize = UDim2.new(0, 0, 0, 0)
+	body.Parent = main
 
 	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 6)
+	layout.Padding = UDim.new(0, 8)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = listFrame
+	layout.Parent = body
 
-	local busy = false
-	for i = 1, #list do
-		local entry = list[i]
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, -6, 0, 44)
-		btn.BackgroundColor3 = Color3.fromRGB(31, 31, 42)
-		btn.BorderSizePixel = 0
-		btn.AutoButtonColor = true
-		btn.Font = Enum.Font.GothamMedium
-		btn.TextSize = 14
-		btn.TextColor3 = Color3.fromRGB(225, 222, 240)
-		btn.TextXAlignment = Enum.TextXAlignment.Left
-		btn.Text = "   " .. entry.name
-		btn.LayoutOrder = i
-		btn.Parent = listFrame
+	local order = 0
+	local function nextOrder()
+		order = order + 1
+		return order
+	end
 
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(0, 8)
-		bc.Parent = btn
+	local function mkLabel(text, size, col, height)
+		local l = Instance.new("TextLabel")
+		l.Size = UDim2.new(1, -4, 0, height or 18)
+		l.BackgroundTransparency = 1
+		l.Font = size >= 16 and Enum.Font.GothamBold or Enum.Font.Gotham
+		l.TextSize = size
+		l.TextColor3 = col
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextYAlignment = Enum.TextYAlignment.Top
+		l.TextWrapped = true
+		l.Text = text
+		l.LayoutOrder = nextOrder()
+		l.Parent = body
+		return l
+	end
 
-		track(btn.Activated:Connect(function()
+	local function mkButton(text, color)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(1, -4, 0, 40)
+		b.BackgroundColor3 = color
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = true
+		b.Font = Enum.Font.GothamMedium
+		b.TextSize = 14
+		b.TextColor3 = Color3.fromRGB(240, 238, 250)
+		b.Text = text
+		b.LayoutOrder = nextOrder()
+		b.Parent = body
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = b
+		return b
+	end
+
+	if unsupported then
+		mkLabel("Game not currently available", 16, Color3.fromRGB(255, 205, 90), 22)
+	else
+		mkLabel((entry and entry.name or "Script") .. " failed to load", 16, Color3.fromRGB(255, 120, 120), 22)
+	end
+	local statusLbl = mkLabel("", 12, Color3.fromRGB(150, 150, 170), 34)
+
+	if not unsupported and entry then
+		local busy = false
+		local retry = mkButton("Retry", Color3.fromRGB(46, 120, 90))
+		track(retry.Activated:Connect(function()
 			if busy then return end
 			busy = true
 			pcall(function() gui.Enabled = false end)
@@ -314,12 +442,62 @@ local function buildPicker(list, failed)
 					unload()
 				else
 					pcall(function() gui.Enabled = true end)
-					status.Text = entry.name .. " failed"
 					busy = false
 				end
 			end)
 		end))
 	end
+
+	mkLabel("REQUEST A GAME", 13, Color3.fromRGB(148, 108, 255), 18)
+	mkLabel("type a game name or link, then send", 11, Color3.fromRGB(130, 130, 150), 16)
+
+	local inputBox = Instance.new("TextBox")
+	inputBox.Size = UDim2.new(1, -4, 0, 40)
+	inputBox.BackgroundColor3 = Color3.fromRGB(31, 31, 42)
+	inputBox.BorderSizePixel = 0
+	inputBox.Font = Enum.Font.Gotham
+	inputBox.TextSize = 13
+	inputBox.TextColor3 = Color3.fromRGB(230, 228, 245)
+	inputBox.PlaceholderText = "game name / link (optional)"
+	inputBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+	inputBox.Text = ""
+	inputBox.ClearTextOnFocus = false
+	inputBox.TextXAlignment = Enum.TextXAlignment.Left
+	inputBox.TextTruncate = Enum.TextTruncate.AtEnd
+	inputBox.LayoutOrder = nextOrder()
+	inputBox.Parent = body
+	local ibc = Instance.new("UICorner") ibc.CornerRadius = UDim.new(0, 8) ibc.Parent = inputBox
+	local ibp = Instance.new("UIPadding") ibp.PaddingLeft = UDim.new(0, 10) ibp.PaddingRight = UDim.new(0, 10) ibp.Parent = inputBox
+
+	local sendBtn = mkButton("Send Request", Color3.fromRGB(88, 60, 170))
+	local resultLbl = mkLabel("", 12, Color3.fromRGB(150, 200, 150), 30)
+
+	local sending = false
+	track(sendBtn.Activated:Connect(function()
+		if sending then return end
+		if not hasRequest() then
+			resultLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
+			resultLbl.Text = "your executor can't send http requests"
+			return
+		end
+		sending = true
+		sendBtn.Text = "sending..."
+		local note = inputBox.Text
+		task.spawn(function()
+			local ok = manualRequest(note)
+			if ok then
+				resultLbl.TextColor3 = Color3.fromRGB(150, 210, 150)
+				resultLbl.Text = "request sent - thanks!"
+				sendBtn.Text = "Sent"
+				inputBox.Text = ""
+			else
+				resultLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
+				resultLbl.Text = "send failed - try again"
+				sendBtn.Text = "Send Request"
+				sending = false
+			end
+		end)
+	end))
 
 	local footer = Instance.new("TextLabel")
 	footer.Size = UDim2.new(1, 0, 0, 22)
@@ -361,13 +539,40 @@ local function buildPicker(list, failed)
 	end))
 
 	pcall(protectParent, gui)
+
+	if unsupported then
+		if hasRequest() then
+			statusLbl.Text = "sending a request for this game..."
+			task.spawn(function()
+				local ok = autoRequest()
+				if not unloaded then
+					if ok then
+						statusLbl.Text = "a request has been put in for a script"
+					elseif requestedBefore(game.GameId) then
+						statusLbl.Text = "a request has been put in for a script"
+					else
+						statusLbl.Text = "couldn't auto-send - use the button below"
+					end
+				end
+			end)
+		else
+			statusLbl.Text = "this game isn't supported yet"
+		end
+	else
+		statusLbl.Text = "network issue? tap retry, or request below"
+	end
 end
 
 task.spawn(function()
 	local gid = game.GameId
 	local m = findMatch(catalog, gid)
-	if m and run(m) then
-		if G.Chronix == Chronix then G.Chronix = nil end
+	if m then
+		if run(m) then
+			if G.Chronix == Chronix then G.Chronix = nil end
+			return
+		end
+		frame()
+		buildPanel(false, m)
 		return
 	end
 	local body = fetch(RAW .. "games.json")
@@ -375,13 +580,17 @@ task.spawn(function()
 		local okJ, data = pcall(function() return HttpService:JSONDecode(body) end)
 		if okJ and type(data) == "table" and type(data.scripts) == "table" and #data.scripts > 0 then
 			local m2 = findMatch(data.scripts, gid)
-			if m2 and (not m or m2.url ~= m.url) and run(m2) then
-				if G.Chronix == Chronix then G.Chronix = nil end
+			if m2 then
+				if run(m2) then
+					if G.Chronix == Chronix then G.Chronix = nil end
+					return
+				end
+				frame()
+				buildPanel(false, m2)
 				return
 			end
-			catalog = data.scripts
 		end
 	end
 	frame()
-	buildPicker(catalog, m ~= nil)
+	buildPanel(true, nil)
 end)
