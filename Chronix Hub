@@ -141,6 +141,7 @@ local catalog = {
 	{name = "TheTower", gameIds = {6701101774}, url = RAW .. "TheTower"},
 	{name = "Sell Ores", gameIds = {10336278580}, url = RAW .. "%5B%F0%9F%92%8E%5D%20Sell%20Ores%20%E2%9B%8F%EF%B8%8F"},
 	{name = "Steal an Egg", gameIds = {10563114921}, url = RAW .. "Steal%20an%20Egg"},
+	{name = "Greedy Growers", gameIds = {10440833423}, url = RAW .. "Greedy%20Growers"},
 }
 
 local function findMatch(list, gid)
