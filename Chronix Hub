@@ -42,6 +42,32 @@ local function fetch(url)
 	return nil
 end
 
+local CAPVALS = {
+	getgenv = getgenv,
+	writefile = writefile,
+	readfile = readfile,
+	isfile = isfile,
+	firetouchinterest = firetouchinterest,
+	fireproximityprompt = fireproximityprompt,
+	getconnections = getconnections,
+	hookmetamethod = hookmetamethod,
+	gethui = gethui,
+}
+local function capOK(name)
+	if name == "Drawing" then
+		return type(Drawing) == "table" and type(Drawing.new) == "function"
+	end
+	return type(CAPVALS[name]) == "function"
+end
+local function checkNeeds(needs)
+	local miss = {}
+	if type(needs) ~= "table" then return miss end
+	for _, n in ipairs(needs) do
+		if not capOK(n) then miss[#miss + 1] = n end
+	end
+	return miss
+end
+
 local function protectParent(sg)
 	local okHui, hui = pcall(function() return gethui() end)
 	if okHui and typeof(hui) == "Instance" then
@@ -53,6 +79,69 @@ local function protectParent(sg)
 	local lp = Players.LocalPlayer
 	local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
 	if pg then sg.Parent = pg end
+end
+
+local function makeWatermark()
+	local TextService = game:GetService("TextService")
+	local UserInputService = game:GetService("UserInputService")
+	local Players = game:GetService("Players")
+	local text = "Made by 6z4b on Rscripts & Discord"
+	local small = false
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		small = UserInputService.TouchEnabled or (cam and cam.ViewportSize.X < 700)
+	end)
+	local size = small and 11 or 13
+	local pad = small and 10 or 14
+	local height = small and 20 or 24
+	local width = 240
+	pcall(function()
+		width = TextService:GetTextSize(text, size, Enum.Font.GothamSemibold, Vector2.new(4000, 100)).X + pad * 2
+	end)
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "wm" .. tostring(math.random(100000, 999999))
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	pcall(function() sg.DisplayOrder = 2147483647 end)
+	local box = Instance.new("Frame")
+	box.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+	box.BackgroundTransparency = 0.2
+	box.BorderSizePixel = 0
+	box.Position = UDim2.new(0, 8, 0, 8)
+	box.Size = UDim2.new(0, width, 0, height)
+	box.Parent = sg
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = box
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(95, 125, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.35
+	stroke.Parent = box
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.new(0, pad, 0, 0)
+	label.Size = UDim2.new(1, -pad * 2, 1, 0)
+	label.Font = Enum.Font.GothamSemibold
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(240, 242, 252)
+	label.TextSize = size
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = box
+	if typeof(gethui) == "function" then
+		pcall(function() sg.Parent = gethui() end)
+	end
+	if not sg.Parent then
+		pcall(function()
+			if syn and typeof(syn.protect_gui) == "function" then syn.protect_gui(sg) end
+			sg.Parent = game:GetService("CoreGui")
+		end)
+	end
+	if not sg.Parent then
+		pcall(function() sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui", 5) end)
+	end
+	return sg
 end
 
 local function makeSplash(name)
@@ -132,16 +221,16 @@ end
 
 local RAW = "https://raw.githubusercontent.com/SmokeTY/Hidden-Scripts/main/"
 local catalog = {
-	{name = "Final Swarm", gameIds = {9551044479}, url = RAW .. "Final%20Swarm"},
-	{name = "Project Delta", gameIds = {2862098693}, url = RAW .. "Project%20Delta"},
-	{name = "Grow a Chicken Fighter", gameIds = {10338952197}, url = RAW .. "Grow%20a%20Chicken%20Fighter"},
-	{name = "Blox Fruits", gameIds = {994732206}, url = RAW .. "%E2%9A%94%EF%B8%8F%20Blox%20Fruits"},
-	{name = "Capybaras VS Plants", gameIds = {8841437826}, url = RAW .. "Capybaras%20VS%20Plants"},
-	{name = "Perimeter Zero", gameIds = {9161571268}, url = RAW .. "trissy%20script"},
-	{name = "TheTower", gameIds = {6701101774}, url = RAW .. "TheTower"},
-	{name = "Sell Ores", gameIds = {10336278580}, url = RAW .. "%5B%F0%9F%92%8E%5D%20Sell%20Ores%20%E2%9B%8F%EF%B8%8F"},
-	{name = "Steal an Egg", gameIds = {10563114921}, url = RAW .. "Steal%20an%20Egg"},
-	{name = "Greedy Growers", gameIds = {10440833423}, url = RAW .. "Greedy%20Growers"},
+	{name = "Final Swarm", gameIds = {9551044479}, url = RAW .. "Final%20Swarm", needs = {"writefile", "readfile", "isfile", "getconnections"}},
+	{name = "Project Delta", gameIds = {2862098693}, url = RAW .. "Project%20Delta", needs = {"writefile", "readfile", "isfile", "Drawing"}},
+	{name = "Grow a Chicken Fighter", gameIds = {10338952197}, url = RAW .. "Grow%20a%20Chicken%20Fighter", needs = {"writefile", "readfile", "isfile", "firetouchinterest"}},
+	{name = "Blox Fruits", gameIds = {994732206}, url = RAW .. "%E2%9A%94%EF%B8%8F%20Blox%20Fruits", needs = {"writefile", "readfile", "isfile", "firetouchinterest"}},
+	{name = "Capybaras VS Plants", gameIds = {8841437826}, url = RAW .. "Capybaras%20VS%20Plants", needs = {"writefile", "readfile", "isfile"}},
+	{name = "Perimeter Zero", gameIds = {9161571268}, url = RAW .. "trissy%20script", needs = {"writefile", "readfile", "isfile", "Drawing"}},
+	{name = "TheTower", gameIds = {6701101774}, url = RAW .. "TheTower", needs = {}},
+	{name = "Sell Ores", gameIds = {10336278580}, url = RAW .. "%5B%F0%9F%92%8E%5D%20Sell%20Ores%20%E2%9B%8F%EF%B8%8F", needs = {"writefile", "readfile", "isfile"}},
+	{name = "Steal an Egg", gameIds = {10563114921}, url = RAW .. "Steal%20an%20Egg", needs = {}},
+	{name = "Greedy Growers", gameIds = {10440833423}, url = RAW .. "Greedy%20Growers", needs = {}},
 }
 
 local function findMatch(list, gid)
@@ -183,7 +272,7 @@ local function run(entry)
 	return true
 end
 
-local function buildPanel(unsupported, entry)
+local function buildPanel(unsupported, entry, capsMissing)
 	local conns = {}
 	local function track(c)
 		conns[#conns + 1] = c
@@ -204,6 +293,10 @@ local function buildPanel(unsupported, entry)
 			pcall(function() conns[i]:Disconnect() end)
 		end
 		pcall(function() gui:Destroy() end)
+		if Chronix.Watermark then
+			pcall(function() Chronix.Watermark:Destroy() end)
+			Chronix.Watermark = nil
+		end
 		if G.Chronix == Chronix then G.Chronix = nil end
 	end
 	Chronix.Unload = unload
@@ -312,23 +405,15 @@ local function buildPanel(unsupported, entry)
 		return b
 	end
 
-	if unsupported then
-		mkLabel("Game not currently available", 16, Color3.fromRGB(255, 205, 90), 22)
-	else
-		mkLabel((entry and entry.name or "Script") .. " failed to load", 16, Color3.fromRGB(255, 120, 120), 22)
-	end
-	local statusLbl = mkLabel("", 12, Color3.fromRGB(150, 150, 170), 34)
-
-	if not unsupported and entry then
+	local function tryButton(label)
 		local busy = false
-		local retry = mkButton("Retry", Color3.fromRGB(46, 120, 90))
-		track(retry.Activated:Connect(function()
+		local btn = mkButton(label, Color3.fromRGB(88, 60, 170))
+		track(btn.Activated:Connect(function()
 			if busy then return end
 			busy = true
 			pcall(function() gui.Enabled = false end)
 			task.spawn(function()
-				local ok = run(entry)
-				if ok then
+				if run(entry) then
 					unload()
 				else
 					pcall(function() gui.Enabled = true end)
@@ -338,8 +423,30 @@ local function buildPanel(unsupported, entry)
 		end))
 	end
 
-	mkLabel("REQUEST A GAME", 13, Color3.fromRGB(148, 108, 255), 18)
-	mkLabel("message 6z4b on discord with the game name to get a script added", 11, Color3.fromRGB(130, 130, 150), 32)
+	local function requestLabel()
+		mkLabel("REQUEST A GAME", 13, Color3.fromRGB(148, 108, 255), 18)
+		mkLabel("message 6z4b on discord with the game name to get a script added", 11, Color3.fromRGB(130, 130, 150), 32)
+	end
+
+	if capsMissing and #capsMissing > 0 then
+		local execName = "your executor"
+		pcall(function() execName = tostring(identifyexecutor()) end)
+		mkLabel("Executor not fully supported", 16, Color3.fromRGB(255, 205, 90), 22)
+		mkLabel(execName .. " is missing:", 12, Color3.fromRGB(150, 150, 170), 18)
+		mkLabel(table.concat(capsMissing, ", "), 13, Color3.fromRGB(255, 120, 120), 40)
+		mkLabel((entry and entry.name or "this script") .. " needs these - it may not work right", 11, Color3.fromRGB(150, 150, 170), 30)
+		tryButton("Try Anyway")
+		mkLabel("works best on Volt, Wave, Delta or Vega X", 11, Color3.fromRGB(130, 130, 150), 16)
+	elseif unsupported then
+		mkLabel("Game not currently available", 16, Color3.fromRGB(255, 205, 90), 22)
+		mkLabel("this game isn't supported yet", 12, Color3.fromRGB(150, 150, 170), 20)
+		requestLabel()
+	else
+		mkLabel((entry and entry.name or "Script") .. " failed to load", 16, Color3.fromRGB(255, 120, 120), 22)
+		mkLabel("network issue? tap retry, or request below", 12, Color3.fromRGB(150, 150, 170), 20)
+		tryButton("Retry")
+		requestLabel()
+	end
 
 	local footer = Instance.new("TextLabel")
 	footer.Size = UDim2.new(1, 0, 0, 22)
@@ -381,42 +488,36 @@ local function buildPanel(unsupported, entry)
 	end))
 
 	pcall(protectParent, gui)
-
-	if unsupported then
-		statusLbl.Text = "this game isn't supported yet"
-	else
-		statusLbl.Text = "network issue? tap retry, or request below"
-	end
+	pcall(function() Chronix.Watermark = makeWatermark() end)
 end
 
 task.spawn(function()
 	local gid = game.GameId
 	local m = findMatch(catalog, gid)
-	if m then
-		if run(m) then
-			if G.Chronix == Chronix then G.Chronix = nil end
-			return
-		end
-		frame()
-		buildPanel(false, m)
-		return
-	end
-	local body = fetch(RAW .. "games.json")
-	if body then
-		local okJ, data = pcall(function() return HttpService:JSONDecode(body) end)
-		if okJ and type(data) == "table" and type(data.scripts) == "table" and #data.scripts > 0 then
-			local m2 = findMatch(data.scripts, gid)
-			if m2 then
-				if run(m2) then
-					if G.Chronix == Chronix then G.Chronix = nil end
-					return
-				end
-				frame()
-				buildPanel(false, m2)
-				return
+	if not m then
+		local body = fetch(RAW .. "games.json")
+		if body then
+			local okJ, data = pcall(function() return HttpService:JSONDecode(body) end)
+			if okJ and type(data) == "table" and type(data.scripts) == "table" and #data.scripts > 0 then
+				m = findMatch(data.scripts, gid)
 			end
 		end
 	end
+	if not m then
+		frame()
+		buildPanel(true, nil)
+		return
+	end
+	local miss = checkNeeds(m.needs)
+	if #miss > 0 then
+		frame()
+		buildPanel(false, m, miss)
+		return
+	end
+	if run(m) then
+		if G.Chronix == Chronix then G.Chronix = nil end
+		return
+	end
 	frame()
-	buildPanel(true, nil)
+	buildPanel(false, m)
 end)
